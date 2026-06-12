@@ -1,0 +1,281 @@
+# ============================================================
+# PUBLICATION FIGURES v3 — CLEAN. Built from frozen CSVs (results/, results_why/).
+# Design rules (fixing the prior clutter): generous margins; NO text annotations over data;
+# model labels live on axes only; one claim per figure; muted palette; CIs as thin bars.
+#   carry = crimson, near-miss = amber, no = steel, no-EN = grey.
+# Output: figures/*.pdf (vector) + *.png (preview, sane dpi).
+# ============================================================
+import os, ast
+import numpy as np, pandas as pd
+import matplotlib as mpl; mpl.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+
+RES="results"; WHY="results_why"; OUT="figures"; os.makedirs(OUT,exist_ok=True)
+plt.rcParams.update({
+    "savefig.dpi":300, "font.family":"serif", "font.serif":["DejaVu Serif"],
+    "mathtext.fontset":"dejavuserif", "font.size":11,
+    "axes.titlesize":11.5, "axes.labelsize":11.5, "axes.titleweight":"normal", "axes.titlepad":8,
+    "axes.spines.top":False, "axes.spines.right":False, "axes.linewidth":0.8,
+    "xtick.major.size":3.5, "ytick.major.size":3.5, "axes.axisbelow":True,
+    "legend.frameon":False, "legend.fontsize":9.5, "figure.facecolor":"white",
+})
+C_CARRY="#C0392B"; C_NEAR="#E08A1E"; C_NO="#3B7AA8"; C_NOEN="#AAB0B6"; C_RAND="#CBD0D6"; C_POS="#D4A017"
+# unified accent palette shared across all figures (non-verdict series)
+C_ACC="#2E7D5B"   # teal-green accent (e.g. direction / primary signal)
+C_ACC2="#E08A1E"  # amber (secondary, == near-miss hue, reused intentionally)
+C_CTRL="#9AA0A6"  # neutral grey for controls (shuffled, baselines)
+GRID="#ECECEC"; INK="#222"
+def vcol(v): return {"carry":C_CARRY,"near-miss":C_NEAR,"no":C_NO,"no-EN":C_NOEN}.get(v,C_NO)
+# distinct marker per verdict so the figures read in grayscale / under colour-blindness
+def vmark(v): return {"carry":"o","near-miss":"D","no":"s","no-EN":"v"}.get(v,"s")
+# canonical model names, matching Table 1 exactly
+_CANON={"gpt2":"GPT-2","gpt2-medium":"GPT-2-medium","gpt2-large":"GPT-2-large","distilgpt2":"DistilGPT-2",
+    "pythia-160m":"Pythia-160M","pythia-410m":"Pythia-410M","pythia-1b":"Pythia-1B","pythia-1.4b":"Pythia-1.4B",
+    "gpt-neo-125M":"GPT-Neo-125M","gpt-neo-125m":"GPT-Neo-125M","bloom-560m":"BLOOM-560M",
+    "Qwen2.5-0.5B":"Qwen2.5-0.5B","qwen2.5-0.5b":"Qwen2.5-0.5B","opt-125m":"OPT-125M","tinystories-33m":"TinyStories-33M"}
+def short(m):
+    s=m.split("/")[-1]
+    return _CANON.get(s,_CANON.get(s.lower(),s))
+# canonical model order (Table 1): carriers, then non-carriers by family
+CANON_ORDER=["gpt2","gpt2-medium","gpt2-large","distilgpt2","pythia-410m","pythia-1b",
+             "pythia-1.4b","gpt-neo-125M","bloom-560m","Qwen2.5-0.5B","opt-125m"]
+def canon_rank(m):
+    s=m.split("/")[-1]
+    return CANON_ORDER.index(s) if s in CANON_ORDER else 99
+
+t2=pd.read_csv(f"{RES}/table2_dissociation.csv")
+caus=pd.read_csv(f"{RES}/causal.csv")
+mech=pd.read_csv(f"{RES}/mechanism.csv")
+corr=pd.read_csv(f"{RES}/corrh_vs_nullspace.csv")
+syn=pd.read_csv(f"{RES}/synthetic_validation.csv")
+E2=pd.read_csv(f"{WHY}/E2_channel.csv") if os.path.exists(f"{WHY}/E2_channel.csv") else None
+v=next((c for c in ("verdict_NEW_seedmin","verdict_seedmin","verdict") if c in t2),"verdict")
+# Derive the paper's "near-miss" label: a model the looser rule calls carry but the
+# worst-seed rule calls no (e.g. Qwen, Pythia-1.4B). Figures colour these as near-miss.
+def _paper_verdict(row):
+    sm=str(row.get(v))
+    loose=str(row.get("verdict_NEW", sm))
+    pp=row.get("gap_paired_p")
+    if sm=="carry": return "carry"
+    if sm in ("no-EN",): return "no-EN"
+    if loose=="carry" or (pp is not None and pp==pp and float(pp)<0.05): return "near-miss"
+    return "no"
+t2["verdict_paper"]=t2.apply(_paper_verdict,axis=1)
+v="verdict_paper"
+
+def save(fig,name):
+    fig.savefig(f"{OUT}/{name}.pdf", bbox_inches="tight")
+    fig.savefig(f"{OUT}/{name}.png", dpi=120, bbox_inches="tight")
+    plt.close(fig); print(f"  saved {name}")
+
+# ============ FIG 0 — decodability of entropy everywhere (supports 4.1) ============
+def fig0():
+    d=t2[t2["nEN"]>0].copy().sort_values("model",key=lambda c:c.map(canon_rank))
+    fig,ax=plt.subplots(figsize=(7.8,3.6)); x=np.arange(len(d))
+    ax.axhspan(0.55,0.74,color="#EEF2F0",zorder=0)
+    for i,(_,r) in enumerate(d.iterrows()):
+        ax.plot([i,i],[0,r["R2_full"]],color="#DADDE0",lw=1.0,zorder=1)
+        ax.plot(i,r["R2_full"],marker=vmark(r[v]),ms=9,color=vcol(r[v]),mec="white",mew=1.0,zorder=3)
+    ax.set_xticks(x); ax.set_xticklabels([short(m) for m in d["model"]],rotation=30,ha="right",fontsize=9)
+    ax.set_ylabel(r"held-out $R^2_{\mathrm{full}}$"); ax.set_ylim(0,0.82)
+    ax.set_xlim(-0.6,len(d)-0.4)
+    ax.grid(True,axis="y",color=GRID,lw=.7)
+    ax.legend(handles=[Line2D([],[],marker="o",ls="",color=C_CARRY,label="carrier"),
+                       Line2D([],[],marker="D",ls="",color=C_NEAR,label="near-miss"),
+                       Line2D([],[],marker="s",ls="",color=C_NO,label="non-carrier")],
+              loc="lower center",bbox_to_anchor=(0.5,1.01),ncol=3,fontsize=9,columnspacing=1.5)
+    save(fig,"fig0_decodability")
+fig0()
+
+# ============ FIG 1 — carrier vs causal (headline) ============
+# Clean scatter: x=causal |dH| (log), y=R2_EN with CI. Color=verdict. NO inline text; legend only.
+def fig1():
+    d=t2[t2["nEN"]>0].copy()
+    # match on canonical (short) name — causal.csv uses HF-prefixed keys, table2 uses short keys
+    dh={short(r["model"]):abs(r["dH_clip_EN"]) for _,r in caus.iterrows()}
+    fig,ax=plt.subplots(figsize=(7.4,5.0))
+    ax.set_xscale("log"); ax.set_xlim(0.025,4.0); ax.set_ylim(-0.05,0.50)
+    ax.axhspan(-0.05,0.0,color="#f7f7f7",zorder=0)
+    missing=[]
+    for _,r in d.iterrows():
+        x=dh.get(short(r["model"])); y=r["R2_EN"]; c=vcol(r[v]); mk=vmark(r[v])
+        if x is None: missing.append(r["model"]); continue
+        ax.errorbar(x,y,yerr=[[max(y-r["R2_EN_lo"],0)],[max(r["R2_EN_hi"]-y,0)]],
+                    fmt=mk,ms=9,color=c,ecolor=c,elinewidth=1.2,capsize=0,mec="white",mew=1.2,zorder=3)
+    assert not missing, f"unmatched models in fig1: {missing}"
+    ax.set_xlabel(r"causal $|\Delta H|$ under EN ablation  (nats, log scale)")
+    ax.set_ylabel(r"variance carried   $R^2_{\mathrm{EN}}$")
+    ax.grid(True,color=GRID,lw=.7)
+    ax.legend(handles=[Line2D([],[],marker="o",ls="",color=C_CARRY,mec="white",label="carrier (GPT-2 lineage)"),
+                       Line2D([],[],marker="D",ls="",color=C_NEAR,mec="white",label="near-miss"),
+                       Line2D([],[],marker="s",ls="",color=C_NO,mec="white",label="non-carrier")],
+              loc="upper right",handletextpad=.3,borderaxespad=.8)
+    save(fig,"fig1_carrier_vs_causal")
+fig1()
+
+# ============ FIG 2 — forest: R2_EN vs random vs positive control (headline) ============
+# Horizontal, grouped by verdict, generous row spacing, labels on y-axis only.
+def fig2():
+    d=t2[t2["nEN"]>0].copy()
+    order={"carry":0,"near-miss":1,"no":2}
+    d["o"]=d[v].map(lambda x:order.get(x,2))
+    d=d.sort_values(["o","R2_EN"],ascending=[True,True]).reset_index(drop=True)
+    fig,ax=plt.subplots(figsize=(8.2,5.8)); y=np.arange(len(d))*1.0
+    for i,(_,r) in enumerate(d.iterrows()):
+        c=vcol(r[v]); mk=vmark(r[v])
+        ax.plot([r["R2_rand"],r["R2_EN"]],[i,i],color="#E2E2E2",lw=6,zorder=1,solid_capstyle="round")
+        ax.errorbar(r["R2_EN"],i,xerr=[[max(r["R2_EN"]-r["R2_EN_lo"],0)],[max(r["R2_EN_hi"]-r["R2_EN"],0)]],
+                    fmt=mk,ms=7,color=c,ecolor=c,elinewidth=1.3,capsize=0,mec="white",mew=1.0,zorder=4)
+        ax.scatter(r["R2_rand"],i,marker="o",s=26,facecolor="white",edgecolor=C_RAND,lw=1.4,zorder=3)
+        ax.scatter(r["R2_posctrl_corrH"],i,marker="D",s=30,color=C_POS,edgecolor="white",lw=.6,zorder=5)
+    ax.axvline(0,color="#ccc",lw=.8,zorder=0)
+    ax.set_yticks(y); ax.set_yticklabels([short(m) for m in d["model"]])
+    ax.set_ylim(-0.7,len(d)-0.3)
+    ax.set_xlabel(r"held-out $R^2$ for predicting output entropy"); ax.set_xlim(-0.12,0.58)
+    ax.grid(True,axis="x",color=GRID,lw=.7)
+    # group separators by verdict
+    gv=d[v].values
+    for i in range(1,len(gv)):
+        if gv[i]!=gv[i-1]: ax.axhline(i-0.5,color="#E6E6E6",lw=1)
+    ax.legend(handles=[Line2D([],[],marker="o",ls="",color=C_CARRY,mec="white",label=r"$R^2_{\mathrm{EN}}$ (shape=verdict)"),
+                       Line2D([],[],marker="o",ls="",mfc="white",mec=C_RAND,label=r"$R^2_{\mathrm{random}}$"),
+                       Line2D([],[],marker="D",ls="",color=C_POS,label=r"positive control"),
+                       Line2D([],[],color="#E2E2E2",lw=6,label=r"range: random$\to$EN")],
+              loc="lower center",bbox_to_anchor=(0.5,1.01),ncol=4,handletextpad=.4,columnspacing=1.3,fontsize=9)
+    save(fig,"fig2_forest")
+fig2()
+
+# ============ FIG 3 — mechanism: direction vs norm + PCA ============
+def fig3():
+    d=mech.copy()
+    fig,(axA,axB)=plt.subplots(1,2,figsize=(11,4.3),gridspec_kw={"wspace":0.28})
+    x=np.arange(len(d)); w=0.27
+    axA.bar(x-w,d["r2_direction"],w,label="direction",color=C_ACC,zorder=3)
+    axA.bar(x,d["r2_norm"],w,label="norm",color=C_POS,zorder=3)
+    axA.bar(x+w,d["r2_shuffled"],w,label="shuffled (control)",color=C_CTRL,zorder=3)
+    axA.axhline(0,color=INK,lw=.8)
+    axA.set_xticks(x); axA.set_xticklabels([short(m) for m in d["model"]],rotation=20,ha="right",fontsize=9.5)
+    axA.set_ylabel(r"held-out $R^2$"); axA.set_ylim(-1.05,0.95)
+    axA.set_title("(a) direction vs. norm vs. shuffled",loc="left",fontsize=10.5)
+    axA.grid(True,axis="y",color=GRID,lw=.7)
+    axA.legend(loc="lower center",bbox_to_anchor=(0.5,1.06),ncol=3,fontsize=8.5,columnspacing=1.0,handletextpad=.4)
+    for _,r in d.iterrows():
+        pca=ast.literal_eval(r["pca"]) if isinstance(r["pca"],str) else r["pca"]
+        ks=sorted(int(k) for k in pca); ys=[pca[str(k)] for k in ks]
+        axB.plot(ks,ys,marker="o",ms=4,lw=1.7,label=short(r["model"]))
+    axB.axvline(256,color="#bbb",ls=":",lw=1.1,zorder=1)
+    axB.set_xscale("log",base=2); axB.set_xlabel(r"PCA components $k$")
+    axB.set_ylabel(r"$R^2$ from top-$k$"); axB.set_ylim(0,0.8)
+    axB.set_title("(b) PCA component sweep",loc="left",fontsize=10.5)
+    axB.grid(True,color=GRID,lw=.7); axB.legend(fontsize=8.5,loc="lower right")
+    save(fig,"fig3_mechanism")
+fig3()
+
+# ============ FIG 4 — why the lineage? no candidate separates carriers (3 panels) ============
+def fig4():
+    e1=pd.read_csv(f"{WHY}/E1_geometry.csv")
+    e2=pd.read_csv(f"{WHY}/E2_channel.csv")
+    e1c=pd.read_csv(f"{WHY}/E1c_causal_direction.csv")
+    def cg(df,col): 
+        df=df.copy(); df["c"]=df["grp"].map(lambda g:C_CARRY if g=="carry" else C_NO); return df
+    fig,(a,b,c)=plt.subplots(1,3,figsize=(11.5,3.8),gridspec_kw={"wspace":0.34})
+    # panel a: tangential (norm) channel fraction
+    d2=cg(e2,"tang_frac").sort_values("tang_frac")
+    yb=np.arange(len(d2))
+    a.barh(yb,d2["tang_frac"],color=d2["c"],alpha=.85,height=.62,zorder=3)
+    a.errorbar(d2["tang_frac"],yb,xerr=[d2["tang_frac"]-d2["tang_frac_lo"],d2["tang_frac_hi"]-d2["tang_frac"]],
+               fmt="none",ecolor=INK,elinewidth=.8,capsize=0,zorder=4)
+    a.set_yticks(yb); a.set_yticklabels([short(m) for m in d2["model"]],fontsize=8.5)
+    a.set_xlim(0.4,1.02); a.set_xlabel("tangential (norm) fraction")
+    a.set_title("(a) ablation channel",loc="left",fontsize=10.5); a.grid(True,axis="x",color=GRID,lw=.7)
+    # panel b: geometry align_z
+    d1=cg(e1,"align_z").sort_values("align_z")
+    yb=np.arange(len(d1))
+    b.barh(yb,d1["align_z"],color=d1["c"],alpha=.85,height=.62,zorder=3)
+    b.axvline(0,color=INK,lw=.8)
+    b.set_yticks(yb); b.set_yticklabels([short(m) for m in d1["model"]],fontsize=8.5)
+    b.set_xlabel(r"null-space alignment $z$")
+    b.set_title("(b) geometry",loc="left",fontsize=10.5); b.grid(True,axis="x",color=GRID,lw=.7)
+    # panel c: causal-direction z
+    d3=cg(e1c,"causal_z").sort_values("causal_z")
+    yb=np.arange(len(d3))
+    c.barh(yb,d3["causal_z"],color=d3["c"],alpha=.85,height=.62,zorder=3)
+    c.axvline(0,color=INK,lw=.8)
+    c.set_yticks(yb); c.set_yticklabels([short(m) for m in d3["model"]],fontsize=8.5)
+    c.set_xlabel(r"causal-direction $z$")
+    c.set_title("(c) causal direction",loc="left",fontsize=10.5); c.grid(True,axis="x",color=GRID,lw=.7)
+    fig.legend(handles=[Line2D([],[],marker="s",ls="",color=C_CARRY,label="carrier"),
+                        Line2D([],[],marker="s",ls="",color=C_NO,label="non-carrier")],
+               loc="upper center",ncol=2,bbox_to_anchor=(0.5,1.06))
+    save(fig,"fig4_why_fails")
+fig4()
+
+# ============ FIG 5 — synthetic validation (appendix) ============
+def fig5():
+    fig,ax=plt.subplots(figsize=(6.6,4.3))
+    # the three sign conditions coincide (that IS the sign-invariance result);
+    # draw them as three thin offset lines so all are visible, plus an explicit note.
+    styles=[("pos","o",C_ACC,0),("neg","s",C_CARRY,0),("mixed","^",C_NO,0)]
+    for sign,mk,cl,off in styles:
+        s=syn[syn["sign"]==sign].sort_values("k_true")
+        ax.plot(s["k_true"],s["k50"],marker=mk,lw=1.4,ms=6,label=f"{sign} signs",color=cl,alpha=.9,
+                mfc="white",mec=cl,mew=1.4)
+    ax.plot([4,256],[4,256],ls=":",color=C_CTRL,lw=1.2,label="ideal $k_{50}=k_{\\mathrm{true}}$")
+    ax.set_xscale("log",base=2); ax.set_yscale("log",base=2)
+    ax.set_xlabel(r"true sparsity $k_{\mathrm{true}}$"); ax.set_ylabel(r"recovered $k_{50}$")
+    ax.grid(True,color=GRID,lw=.7,which="both")
+    ax.annotate("the three sign conditions coincide\n(measure is sign-invariant)",
+                xy=(16,16),xytext=(5,90),fontsize=8.5,color=INK,
+                arrowprops=dict(arrowstyle="->",color="#999",lw=.8))
+    ax.legend(loc="lower right",fontsize=9)
+    save(fig,"fig5_synthetic")
+fig5()
+
+# ============ FIG 6 — sign asymmetry (appendix, descriptive) ============
+# Replaces the cluttered battery panel: a clean signed-causal bar, the cleanest honest extra.
+def fig6():
+    cc=caus.copy(); vmap={short(m):vv for m,vv in zip(t2["model"],t2[v])}
+    cc["v"]=cc["model"].map(lambda m:vmap.get(short(m),"no"))
+    cc=cc.sort_values("dH_clip_EN").reset_index(drop=True); y=np.arange(len(cc))
+    fig,ax=plt.subplots(figsize=(7.2,5.0))
+    for i,(_,r) in enumerate(cc.iterrows()):
+        c=C_CARRY if r["dH_sign"]=="down" else C_NO
+        ax.barh(i,r["dH_clip_EN"],color=c,alpha=.85,height=.6,zorder=3)
+        ax.plot([r["dH_clip_EN_lo"],r["dH_clip_EN_hi"]],[i,i],color=INK,lw=1,zorder=4,solid_capstyle="round")
+    ax.axvline(0,color=INK,lw=1)
+    ax.set_yticks(y); ax.set_yticklabels([short(m) for m in cc["model"]])
+    ax.set_xlabel(r"$\Delta H$ on EN ablation (nats)")
+    ax.grid(True,axis="x",color=GRID,lw=.7)
+    ax.legend(handles=[Line2D([],[],marker="s",ls="",color=C_CARRY,label="ablation lowers H"),
+                       Line2D([],[],marker="s",ls="",color=C_NO,label="ablation raises H")],
+              loc="lower center",bbox_to_anchor=(0.5,1.01),ncol=2,fontsize=9,columnspacing=1.5)
+    save(fig,"fig6_sign_asymmetry")
+fig6()
+
+# ============ FIG 7 — seed stability of R2_EN (appendix) ============
+def fig7():
+    ss=pd.read_csv(f"{RES}/seed_stability.csv")
+    vmap=dict(zip(t2["model"],t2[v]))
+    order=[m for m in CANON_ORDER]
+    fig,ax=plt.subplots(figsize=(7.8,4.6))
+    for i,m in enumerate(order):
+        sub=ss[ss["model"]==m]
+        if sub.empty: continue
+        ver=vmap.get(m,"no"); col=vcol(ver)
+        ycol="R2_EN_point_fixedeval" if "R2_EN_point_fixedeval" in sub else "R2_EN"
+        ys=sub[ycol].dropna().values; xs=[i]*len(ys)
+        ax.plot(xs,ys,marker=vmark(ver),ms=8,color=col,ls="",mec="white",mew=.8,zorder=3)
+        ax.plot([i,i],[min(ys),max(ys)],color=col,lw=1.2,alpha=.5,zorder=2)
+    ax.axhline(0,color="#ccc",lw=.8)
+    ax.set_xticks(range(len(order))); ax.set_xticklabels([short(m) for m in order],rotation=30,ha="right",fontsize=9)
+    ax.set_ylabel(r"$R^2_{\mathrm{EN}}$ per seed"); ax.set_ylim(-0.05,0.47)
+    ax.grid(True,axis="y",color=GRID,lw=.7)
+    ax.legend(handles=[Line2D([],[],marker="o",ls="",color=C_CARRY,label="carrier"),
+                       Line2D([],[],marker="D",ls="",color=C_NEAR,label="near-miss"),
+                       Line2D([],[],marker="s",ls="",color=C_NO,label="non-carrier")],
+              loc="lower center",bbox_to_anchor=(0.5,1.01),ncol=3,fontsize=9,columnspacing=1.5)
+    save(fig,"fig7_seed_stability")
+fig7()
+
+print("\nClean figures written to figures/  (PDF vector + PNG preview).")

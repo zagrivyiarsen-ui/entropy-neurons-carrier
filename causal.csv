@@ -1,0 +1,755 @@
+% ============================================================================
+% Causal but Not Carrier — camera-ready, venue-agnostic LaTeX source.
+% Frozen numbers (data_hash=da5f6242b06fa229, torch 2.7.1, Tesla T4, fp32, used_fallback=false).
+% Swap \documentclass for the venue style (e.g. acl, neurips_2026) before submission;
+% all content below is template-independent. Placeholders for citations marked % CITE.
+% ============================================================================
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\graphicspath{{.}}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{microtype}
+
+\newcommand{\Rfull}{R^{2}_{\mathrm{full}}}
+\newcommand{\REN}{R^{2}_{\mathrm{EN}}}
+\newcommand{\Rrand}{R^{2}_{\mathrm{rand}}}
+
+\title{Causal but Not Carrier: Canonical Entropy Neurons Influence\\
+but Do Not Encode the Variation of Output Entropy}
+\author{Arsenii Zahrivyi\\
+University of Wuppertal\\
+\texttt{zahrivyi@uni-wuppertal.de}}
+\date{June 11, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Entropy neurons are late-layer units that write predominantly to the null space of the unembedding
+matrix and modulate a model's output entropy through the scale of the final LayerNorm, with little
+direct effect on the argmax token. Because they offer a clean, localized handle on predictive
+uncertainty, they are read as a confidence-regulation mechanism. We distinguish two properties that
+this reading conflates: whether these neurons \emph{influence} entropy under intervention, and whether
+they \emph{carry} the variation of entropy that a model exhibits on natural text. Across 13 models
+from 7 architecture families, the two dissociate. Output entropy is linearly decodable from the input
+to the final MLP in every model that has entropy neurons (held-out $\Rfull = 0.55$--$0.74$), and the
+canonical entropy neurons
+causally move it in every family that contains them (clip-ablation $|\Delta H|$ up to $\sim$2.5~nats
+in OPT, whose random baseline is non-zero; the largest effect over a near-zero baseline is
+$\sim$1.4~nats; intervals exclude zero). The same neurons linearly carry entropy variance only in the
+GPT-2 lineage ($\REN = 0.21$--$0.40$; paired-bootstrap margin over a random-neuron baseline strictly
+positive and stable across seeds), and in no other family. The dissociation between a large causal
+effect and a carried variance indistinguishable from random is itself robust across the seven
+non-GPT-2 models with entropy neurons; that carrying appears \emph{only} in the GPT-2 lineage is a
+separate and more tentative single-lineage claim. The absence is not an artifact of probe weakness:
+positive controls---probes from correlation-with-entropy neurons and from principal components---are
+high in all families but two (BLOOM and OPT, where the PCA control is degenerate), so the low $\REN$
+outside the GPT-2 lineage reflects a genuine absence of linear role. The direction of the causal effect
+further dissociates from carrying: it is family-dependent, raising entropy in Pythia, GPT-Neo, and OPT
+and lowering it in GPT-2, BLOOM, and Qwen, so an identical mechanistic signature need not imply an
+identical role. Where the variance does reside is the residual \emph{direction} rather than its
+\emph{norm}---recoverable considerably more readily from the former, and distributed over $\sim$256
+principal directions. We release a sign-invariant attribution measure validated on synthetic data, show
+that the correlation-with-entropy and null-space criteria select disjoint neuron sets, and replace a
+naive gap statistic with a paired bootstrap. We reproduce the prior causal result and add the carrier
+measurement; we characterise the split but do not claim to explain it.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+A language model's calibration---how well its predictive entropy tracks its error rate---bears on
+hallucination, selective prediction, and downstream decisions. Mechanistic accounts of calibration
+have centered on \emph{entropy neurons} (EN) \cite{stolfo2024confidence,gurnee2024universal}:
+high-norm units in the last few layers whose output weights lie almost entirely in the null space of
+the unembedding, so that activating them changes the norm of the residual stream---and hence the
+scale of the final LayerNorm---without appreciably changing the top token. Intervening on them shifts
+output entropy, which has been read as evidence for a confidence-regulation function.
+
+This inference is incomplete. A component can set a quantity under intervention while accounting for
+little of its variation across ordinary inputs. We therefore separate three quantities, formalized in
+Section~\ref{sec:notation}: a neuron set's causal \emph{influence} on entropy under ablation; the share
+of natural entropy variation it linearly \emph{carries} (used interchangeably with \emph{encodes}); and
+the \emph{decodability} of entropy from the full residual stream. Decodability does not imply encoding
+in any particular neuron set, and that gap is the substance of our result: across 13 models from 7
+families, entropy is decodable everywhere (held-out $\Rfull = 0.55$--$0.74$) and the canonical entropy
+neurons influence it everywhere, yet they carry its variation only in the GPT-2 lineage.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+\item \emph{A carrier-versus-causal dissociation} (Figure~\ref{fig:dissoc}, Table~\ref{tab:main}).
+Across 13 models in 7 families, canonical entropy neurons causally move output entropy wherever they
+exist but linearly carry its variance only in the GPT-2 lineage, established by a paired-bootstrap
+comparison against a random-neuron baseline that is stable across selection seeds. The dissociation
+itself holds across all seven non-GPT-2 models with entropy neurons; the further claim that carrying
+is confined to one lineage is stated more cautiously.
+\item \emph{A probe-capability control} that excludes the deflationary reading: positive controls
+recover entropy in exactly the families where the entropy-neuron probe is at chance, so the absence is
+specific to these neurons.
+\item \emph{A mechanistic characterisation} (on four anchor models): entropy is decodable from the
+residual direction considerably more than from its norm, and is distributed over $\sim$256 principal
+directions rather than concentrated in one. We additionally exclude the near-constant-activation
+explanation by showing that carrying is inversely related to entropy-neuron activation variance.
+\item \emph{Methodological tools and corrections}: a sign-invariant attribution measure validated on
+synthetic data; the observation that the correlation-with-entropy and null-space criteria select
+disjoint neuron sets; and a corrected gap statistic that replaces a difference of independent marginal
+intervals with a paired bootstrap.
+\item \emph{Scope.} The carrying set is the GPT-2 family---four models, one a distillation of
+another---along which architecture, pre-training data, and evaluation-domain match are confounded. We
+report the split as distinguishable, not explained.
+\end{enumerate}
+
+\section{Related Work}
+\label{sec:related}
+
+Entropy neurons were first noted as a universal functional family in GPT-2 models
+\cite{gurnee2024universal} and then characterized as units writing to the unembedding null space and
+regulating entropy through the final LayerNorm, with causal interventions demonstrated across models
+up to several billion parameters \cite{stolfo2024confidence}.
+That work establishes a \emph{causal} role and observes that the effect varies across models, but it
+does not claim that the neurons carry the variation of entropy on natural text. We take this
+complementary measurement: we reproduce the causal effect (intervals exclude zero in every model with
+entropy neurons) and add a carrier test over a wider model set, pairing each causal claim with a
+probe-capability control. The carrier-versus-causal dissociation, the family-dependent sign, and the
+positive-control argument are, to our knowledge, new.
+
+Our work also connects to studies of uncertainty in language models. Semantic entropy estimates
+predictive uncertainty by clustering semantically equivalent generations \cite{kuhn2023semantic,
+farquhar2024detecting}, and this signal is recoverable from a single generation's hidden states by a
+trained probe \cite{kossen2024semantic}. These works target semantic uncertainty over generations and
+select probes by supervision, whereas we study token-level output entropy and a fixed canonical neuron
+set; we additionally show that correlation-selected and null-space-selected neurons form disjoint sets
+(Section~\ref{sec:criterion})---two operational definitions rather than a correct and a mistaken one.
+That uncertainty is linearly decodable from hidden states \cite{kossen2024semantic} is consistent with
+our $\Rfull \approx 0.7$; the contribution here is to show that this decodable direction is dissociated
+from the canonical neurons.
+
+\section{Method}
+\label{sec:method}
+
+\subsection{Notation and preliminaries}
+\label{sec:notation}
+
+Let a model with $L$ layers process a token sequence. Write $r_t \in \mathbb{R}^{d_{\mathrm{model}}}$
+for the residual stream at the final layer $L_f = L-1$ and position $t$, $a_t \in
+\mathbb{R}^{d_{\mathrm{mlp}}}$ for the final-MLP post-activation, $W_{\mathrm{out}} \in
+\mathbb{R}^{d_{\mathrm{mlp}}\times d_{\mathrm{model}}}$ for the MLP output weights, and $W_U \in
+\mathbb{R}^{d_{\mathrm{model}}\times |V|}$ for the unembedding. Output entropy at position $t$ is
+\begin{equation}
+H(x_t) = -\sum_{v\in V} p_t(v)\,\log p_t(v), \qquad p_t = \mathrm{softmax}(z_t),
+\label{eq:entropy}
+\end{equation}
+with $z_t$ the logits. We use three terms precisely. \emph{Influence} is the causal change in $H$
+when entropy neurons are ablated (Section~\ref{sec:causal}). \emph{Carrying}, used interchangeably
+with \emph{encoding}, is the share of the variance of $H$ that a neuron set linearly explains, i.e.\
+the held-out $\REN$ of Section~\ref{sec:probe}. \emph{Decodability} is the held-out $\Rfull$ of $H$
+from the full residual-stream input. Decodability concerns the residual stream; carrying concerns a
+specific neuron set; the two are not the same.
+
+\subsection{Identifying entropy neurons}
+\label{sec:select}
+
+For neuron $j$ we compute a null-space proxy: the logit effect of its output direction per unit of
+residual norm, in the spirit of logit-lens projection \cite{nostalgebraist2020logitlens,
+belrose2023tuned},
+\begin{equation}
+\nu_j = \frac{1}{1 + \dfrac{\big\lVert \widetilde{W_{\mathrm{out}}}[j]\, W_U \big\rVert_2}
+{\big\lVert \widetilde{W_{\mathrm{out}}}[j] \big\rVert_2}},
+\label{eq:nullproxy}
+\end{equation}
+where $\widetilde{(\cdot)}$ denotes mean-centering over the vocabulary. This is a monotone proxy for
+the fraction of the output weight lying in the unembedding null space; we regard it as a proxy, not an
+exact measure. Four absolute gates then apply: $\nu_j$ above the $98$th percentile over all
+neurons; clip-ablation changing entropy at high-activation positions by more than $0.02$~nats; the
+argmax token flipping on fewer than $1\%$ of positions; and the ablation moving the residual norm by
+at least $0.30$ (an absolute change, unnormalized across models). These reproduce the canonical
+neurons of prior work (GPT-2 small, layer~11 neuron~2378; Pythia-410M, layer~23).
+
+We disclose a circularity and bound its reach. Because one gate selects for a causal entropy effect,
+``the neurons are causal'' is partly built into selection; we therefore treat only the
+\emph{magnitude}, \emph{sign}, and \emph{contrast against a matched control} of the causal effect as
+informative (Section~\ref{sec:causalcarrier}). This circularity does \emph{not} reach the
+carrier result: the carrier probe (Section~\ref{sec:probe}) measures how much entropy variance the
+selected neurons explain and never uses the causal gate as a feature, so a model can pass selection
+yet carry nothing. The residual-norm gate is unnormalized across models, which affects how many
+neurons are admitted but not the probe-based carrier verdict.
+
+Finally, selecting neurons by their correlation with entropy yields a different top set than
+Eq.~\ref{eq:nullproxy} in nearly every model (Section~\ref{sec:criterion}).
+
+\subsection{A sign-invariant attribution measure}
+\label{sec:signinv}
+
+To describe how distributed the upstream drive of the entropy neurons is, let $c_i = \lvert
+(W_{\mathrm{in}})_{i}\, a_i \rvert$ be the absolute contribution of upstream unit $i$ to the
+entropy-neuron pre-activation, with $a_i$ its activation and $(W_{\mathrm{in}})_{i}$ its weight into
+the neuron, and let $c_{(1)}\ge c_{(2)}\ge\cdots$ denote the sorted values. The cumulative profile and
+its $p$-coverage point are
+\begin{equation}
+F(k) = \frac{\sum_{i\le k} c_{(i)}}{\sum_i c_i}, \qquad
+k_p = \min\{k : F(k)\ge p\}.
+\label{eq:profile}
+\end{equation}
+On synthetic data with a known number of planted contributors
+(Appendix~\ref{app:synthetic}, Figure~\ref{fig:synth}), recall of the planted set is $100\%$ at the
+true sparsity, $k_{0.5}$ grows monotonically with planted sparsity, and the profile is identical for
+positive, negative, and mixed signs, confirming sign-invariance; under a no-structure null, $k_{0.5}$
+saturates at the maximum. This validates recall and sign-invariance, not precision; we do not claim a
+measured false-positive rate on real networks.
+
+\subsection{Probing whether the neurons carry entropy variation}
+\label{sec:probe}
+
+We predict per-token $H$ from the final-MLP input by ridge regression on document-disjoint train/test
+splits. Features are standardized column-wise, $\tilde X = (X - \mu)\,/\,\sigma$ using training-fold
+statistics; with target $y$,
+\begin{equation}
+\hat\beta = \arg\min_{\beta} \lVert y - \tilde X\beta \rVert_2^2 + \lambda \lVert \beta \rVert_2^2,
+\qquad
+R^2 = 1 - \frac{\lVert y_{\mathrm{te}} - \tilde X_{\mathrm{te}}\hat\beta \rVert_2^2}
+{\lVert y_{\mathrm{te}} - \bar y_{\mathrm{te}} \rVert_2^2},
+\label{eq:ridge}
+\end{equation}
+with $\lambda=1$ and $R^2$ evaluated out of sample. Point estimates use the disjoint split; intervals
+use a $1000$-replicate bootstrap that resamples within each side, so no document appears in both train
+and test within a replicate (replicates with fewer than three unique test documents are skipped; this
+did not occur). We compare three feature sets on identical splits: the entropy neurons ($\REN$), a
+same-sized disjoint random-neuron set ($\Rrand$), and---as positive controls---the top
+correlation-with-entropy neurons and the top principal components of the input. The
+correlation-with-entropy control selects on the training fold only; an earlier version selected on all
+evaluation documents, leaking test labels into selection, and is corrected here.
+
+\paragraph{Corrected gap statistic.} An earlier version reported the carrier margin as $R^2_{\mathrm{EN},\mathrm{lo}} - R^2_{\mathrm{rand},\mathrm{hi}}$, a difference of independent marginal
+tails; because the two are computed on the same documents and positively correlated, this overstates
+the width and yields spuriously negative margins. We instead form, within each of $B=1000$ bootstrap
+replicates indexed by $b$ on the \emph{same} resampled documents, the paired difference $g_b$, and
+summarize it by the $\alpha$-percentile $Q_\alpha$ and the one-sided mass below zero:
+\begin{equation}
+g_b = R^2_{\mathrm{EN}}(b) - R^2_{\mathrm{rand}}(b), \qquad
+\mathrm{gap}_{\mathrm{lo}},\,\mathrm{gap}_{\mathrm{hi}} = Q_{2.5}(\{g_b\}),\,Q_{97.5}(\{g_b\}), \qquad
+p = \tfrac{1}{B}\textstyle\sum_{b=1}^{B} \mathbf{1}[g_b \le 0].
+\label{eq:gap}
+\end{equation}
+We write $g_{\mathrm{pt}} = \REN - \Rrand$ for the corresponding point estimate on the disjoint split.
+
+\paragraph{Verdict.} With seeds $s\in\{0,1,2\}$ and $\mathrm{gap}_{\mathrm{lo}}^{(s)}$ the lower bound
+on seed $s$,
+\begin{equation}
+\text{model is}\ \begin{cases}
+\textbf{carrier} & \text{if } \min_{s}\,\mathrm{gap}_{\mathrm{lo}}^{(s)} > 0,\\[2pt]
+\textbf{near-miss} & \text{if } g_{\mathrm{pt}} > 0 \ \wedge\ \exists s:\ \mathrm{gap}_{\mathrm{lo}}^{(s)}\le 0,\\[2pt]
+\textbf{non-carrier} & \text{otherwise.}
+\end{cases}
+\label{eq:verdict}
+\end{equation}
+The worst-seed requirement is the rule that retires a self-corrected artifact
+(Section~\ref{sec:negative}).
+
+\subsection{Causal protocol}
+\label{sec:causal}
+
+We clip- and mean-ablate the entropy neurons and measure the change in $H$ at high-activation
+positions, with document-level intervals, against a disjoint random-neuron baseline. We report clip
+as the defensible estimate and mean (inflated by the LayerNorm feedback loop) only relatively. Causal
+intervals are over at most 12 documents (the injection test of Appendix~\ref{app:battery} uses 8); the
+wide Pythia and OPT intervals are a direct consequence of this small $n$. We flag one model: for OPT
+the random baseline is not near zero ($\approx 0.32$~nats), so OPT's large effect has low
+signal-to-noise and we do not use it as a clean example.
+
+\section{Results}
+\label{sec:results}
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccrrccl}
+\toprule
+Model & $n_{\mathrm{EN}}$ & $\Rfull$ & $\REN$ [95\% CI] & $\Rrand$ & $\mathrm{gap}_{\mathrm{lo}}$ & $p$ & corrH & verdict \\
+\midrule
+GPT-2          & 6 & 0.70 & 0.375 [0.33, 0.43] & $-$0.035 & 0.197 & {\scriptsize$<$.001} & 0.47 & carrier \\
+GPT-2-medium   & 6 & 0.74 & 0.395 [0.35, 0.45] & 0.045 & 0.191 & {\scriptsize$<$.001} & 0.47 & carrier \\
+GPT-2-large    & 5 & 0.60 & 0.206 [0.15, 0.25] & 0.027 & 0.116 & {\scriptsize$<$.001} & 0.18 & carrier \\
+DistilGPT-2    & 6 & 0.65 & 0.401 [0.33, 0.46] & 0.024 & 0.279 & {\scriptsize$<$.001} & 0.26 & carrier \\
+\midrule
+Pythia-410M    & 6 & 0.65 & 0.022 [$-$0.03, 0.06] & 0.013 & $-$0.132 & .579 & 0.42 & no \\
+Pythia-1B      & 6 & 0.55 & 0.024 [$-$0.00, 0.04] & 0.032 & $-$0.066 & .374 & 0.30 & no \\
+Pythia-1.4B    & 6 & 0.62 & 0.105 [0.04, 0.15] & 0.038 & $-$0.037 & .073 & 0.49 & no$^{*}$ \\
+GPT-Neo-125M   & 4 & 0.63 & $-$0.000 [$-$0.02, 0.02] & $-$0.008 & $-$0.157 & .750 & 0.39 & no \\
+BLOOM-560M     & 1 & 0.63 & 0.012 [0.00, 0.02] & 0.051 & $-$0.046 & .211 & 0.16 & no \\
+Qwen2.5-0.5B   & 5 & 0.64 & 0.194 [0.02, 0.32] & 0.015 & 0.010 & .019 & 0.31 & no$^{*}$ \\
+OPT-125M       & 4 & 0.62 & 0.013 [$-$0.02, 0.03] & 0.077 & $-$0.100 & .471 & 0.34 & no \\
+\bottomrule
+\end{tabular}
+\caption{Dissociation across the 11 models with entropy neurons (Pythia-160M and TinyStories-33M, both
+fully trained, have none and are omitted). $\Rfull$: held-out decodability of entropy from the
+final-MLP input. $\REN$/$\Rrand$: held-out variance carried by the entropy neurons vs.\ a same-sized
+random set, with the $95\%$ bootstrap CI on $\REN$. $\mathrm{gap}_{\mathrm{lo}}$ and $p$: lower bound
+and one-sided mass of the paired-bootstrap gap (Eq.~\ref{eq:gap}). corrH: correlation-with-entropy
+positive control (train-fold selection). Verdict
+per Eq.~\ref{eq:verdict}; $^{*}$ denotes a near-miss (positive point gap but a non-carrier verdict
+under the worst-seed rule). All quantities are held-out; CIs are $2.5$/$97.5$ bootstrap percentiles.
+$\Rfull$ is a point estimate (its bootstrap behaviour is discussed in Section~\ref{sec:limits}).
+Activation- and entropy-variance descriptors are in Table~\ref{tab:variance}.}
+\label{tab:main}
+\end{table}
+
+\subsection{Entropy is decodable everywhere}
+\label{sec:reproduce}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.86\linewidth]{fig0_decodability.pdf}
+\caption{Output entropy is linearly decodable from the final-MLP input in every model that has entropy
+neurons (EN). Each point is the held-out $\Rfull$ for one model, marker shape and colour giving its
+verdict; the shaded band marks the observed range, $0.55$ to $0.74$. Decodability is uniformly high and
+does not depend on the carrier verdict.}
+\label{fig:decode}
+\end{figure}
+
+The gates recover entropy neurons in 11 of the 13 models; Pythia-160M and TinyStories-33M, both fully
+trained, yield none. In every model that contains them, the input to the final MLP predicts per-token
+entropy with a held-out $\Rfull$ between 0.55 and 0.74 (Table~\ref{tab:main}), including the models
+whose entropy neurons prove not to carry it. Entropy is thus linearly recoverable from the residual
+stream throughout the model set. Whether it is recoverable from the canonical neurons in particular is
+a separate question.
+
+\subsection{Causal but not carrier}
+\label{sec:causalcarrier}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.66\linewidth]{fig1_carrier_vs_causal.pdf}
+\caption{A strong causal effect coincides with little carried variance. Carried variance $\REN$
+(y-axis, over 60 evaluation documents) against causal $|\Delta H|$ under ablation (x-axis, log scale,
+over $\le$12 documents). Carriers (GPT-2 lineage) lie upper-left, non-carriers lower-right, near-misses
+in amber; verdict is encoded by colour and marker shape (legible in grayscale). The shaded band below
+zero marks negative $\REN$ (worse than predicting the mean). The wide horizontal
+spread of the non-carriers reflects the small causal-document count. Intervals are $2.5$/$97.5$
+bootstrap percentiles. EN: entropy neurons.}
+\label{fig:dissoc}
+\end{figure}
+
+Ablation of the entropy neurons alters output entropy in every model that contains them. The
+clip-ablation shift has a confidence interval excluding zero in all eleven: 0.04 to 0.10 nats in the
+GPT-2 lineage, 0.49 to 2.52 nats in Pythia, GPT-Neo, and OPT, and an intermediate 0.04 to 0.25 nats in
+BLOOM and Qwen, against a random-neuron baseline near zero in every model but OPT, whose non-zero
+baseline (Section~\ref{sec:causal}) leads us to set it aside. Because one selection gate rewards a
+causal effect (Section~\ref{sec:select}), the existence of this effect is in part a consequence of
+selection; its magnitude and sign are not, and the analysis rests on those.
+
+This causal influence does not, however, extend to carrying. Outside the GPT-2 lineage the neurons do
+not account for the variation of entropy that the model exhibits. The entropy-neuron probe attains an
+$\REN$ of 0.375, 0.395, 0.206, and 0.401 across the four GPT-2 models, and in each its paired-bootstrap
+margin over the random baseline is bounded away from zero (lower bounds 0.197, 0.191, 0.116, and 0.279;
+the paired difference is positive in all one thousand replicates) and stable across the three seeds. In
+no other family is the margin positive. The positive correlation between $\REN$ and $\Rrand$ across
+replicates, between 0.06 and 0.13, motivates the paired comparison: the marginal-difference statistic
+used previously treats these correlated quantities as independent and understates the margin.
+
+This localization and the dissociation that underlies it differ in evidential strength. The
+dissociation itself---a large causal effect together with a carried variance indistinguishable from the
+random baseline---is present in all seven non-GPT-2 models with entropy neurons and does not depend on
+any one of them. The narrower claim, that carrying is confined to the GPT-2 family, rests on four
+checkpoints sharing an architecture and a pre-training corpus, one a distillation of another, and we
+regard it as more tentative.
+
+A third dissociation concerns the direction of the causal effect, which varies by family: ablation
+raises entropy in Pythia, GPT-Neo, and OPT and lowers it in GPT-2, BLOOM, and Qwen
+(Figure~\ref{fig:sign}). The sign does not track the carrier split---BLOOM and Qwen lower entropy
+without carrying its variation---so we report it descriptively rather than as a second functional
+dimension; it may reflect a sign convention in the weights together with the clip operation.
+
+The families with the largest intervention effect thus carry the least variance, and the family that
+carries variance exhibits the smallest effect. We refrain from describing this as an anti-correlation.
+It is a contrast between two groups rather than a continuous trend: the carrying group is effectively a
+single lineage, Qwen departs from the pattern within the other group, and the causal magnitudes are not
+comparable across models.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\linewidth]{fig3_mechanism.pdf}
+\caption{Mechanism, on the four anchor models. (a) Held-out $R^2$ for entropy from the residual
+\emph{direction}, from the LayerNorm \emph{norm}, and from a \emph{shuffled} control ($\approx -0.9$,
+confirming the direction signal is real). (b) $R^2$ from the top-$k$ principal components (PCA): the
+signal saturates only near $k=256$ (dotted), so it is distributed rather than low-dimensional.}
+\label{fig:mech}
+\end{figure}
+
+The variance is instead recoverable from the direction of the residual stream more readily than from
+its norm. On the four anchor models, a probe on the normalized residual attains $R^2 \approx 0.7$,
+whereas one restricted to the LayerNorm scale remains at or below 0.17 (Figure~\ref{fig:mech}). The
+direction probe has $d_{\mathrm{model}}$ features and the norm probe one, so the appropriate conclusion
+is not that a single direction carries entropy but that the signal is distributed: a PCA probe reaches
+approximately 0.50 with four components and increases only gradually thereafter, plateauing near 256.
+A signal distributed across a direction the neurons do not span, transmitted to the output through the
+norm they set, accounts for the combination of a strong causal effect and little carried variance.
+
+\subsection{The probe is capable}
+\label{sec:capable}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.82\linewidth]{fig2_forest.pdf}
+\caption{Entropy is decodable, but not from the entropy neurons. Per model, the entropy-neuron probe
+$\REN$ (filled, shape = verdict, with CI), the random-neuron baseline $R^2_{\mathrm{random}}$ (open),
+and the positive control (diamond; corrH, the correlation-with-entropy probe). Models grouped by
+verdict; within each group the grey bar spans the random-to-EN range. The positive control is high in
+the non-carriers, where $\REN$ is at baseline.}
+\label{fig:forest}
+\end{figure}
+
+A low $\REN$ is consistent with two interpretations: that the neurons carry little entropy variance,
+or that no small neuron set permits its linear recovery in these models. The positive controls
+distinguish them. In Pythia and GPT-Neo, a probe constructed from the neurons most correlated with
+entropy attains $R^2$ between 0.31 and 0.49, and a PCA probe reaches 0.38 in Pythia-410M, whose
+entropy-neuron probe is itself at the random baseline (Figure~\ref{fig:forest}); the highest PCA value,
+0.55, belongs to GPT-2-medium, a carrier, and does not bear on this comparison. Entropy is linearly
+accessible in these models but not through the entropy neurons. Two models qualify this control. BLOOM
+contains a single entropy neuron, and both of its controls are degenerate, at 0.16 and 0.012, so
+probe-capability cannot be established and we rely on its full-residual decode of 0.63. OPT's PCA
+control is likewise degenerate, at 0.026, while its correlation control, at 0.34, supports the
+conclusion.
+
+\subsection{A single lineage, not the tokenizer}
+\label{sec:lineage}
+The carriers are precisely the GPT-2 family, including the distilled model. The most immediate
+alternative explanation, the tokenizer, is not supported: GPT-Neo-125M uses the GPT-2 tokenizer and its
+vocabulary of 50{,}257 tokens yet carries nothing. This inference rests on the vocabulary size and the
+established identity of the tokenizer; the per-model hash we compute does not reliably certify
+tokenizer identity, for reasons discussed in Section~\ref{sec:limits}. What remains confounded with the
+lineage is the GPT-2 architecture, the WebText pre-training corpus, and the out-of-distribution status
+of our evaluation text for GPT-2 relative to its in-distribution status for Pythia and GPT-Neo. On
+pretrained checkpoints these three factors covary and cannot be separated.
+
+\subsection{Two criteria, different neurons}
+\label{sec:criterion}
+The two criteria for identifying an entropy neuron select different neurons. The top-five sets ranked
+by correlation with entropy and by the null-space criterion share no members in nine of the eleven
+models and one member in the remaining two (Table~\ref{tab:overlap}). They constitute distinct
+operational definitions addressing distinct questions, which should be kept in mind when interpreting a
+result obtained under one criterion as a statement about the other.
+
+\subsection{Robustness and negative results}
+\label{sec:negative}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.98\linewidth]{fig4_why_fails.pdf}
+\caption{No candidate explanation separates carriers (red) from non-carriers (blue). (a) The
+tangential (norm-changing) fraction of the ablation effect overlaps between groups (GPT-2-medium and
+Pythia-410M coincide at 0.80). (b) Null-space geometric alignment ($z$-score) is not higher for
+carriers; the largest value is GPT-Neo, a non-carrier. (c) The causal-direction $z$-score is large for
+only two of the four carriers. Panels have independent x-scales; the comparison of interest is
+carrier vs.\ non-carrier within each panel, not bar lengths across panels.}
+\label{fig:whyfail}
+\end{figure}
+
+Two non-GPT-2 models warrant closer examination, because their point margin is positive despite a
+non-carrier verdict. Qwen2.5-0.5B has an $\REN$ of 0.194 and a point margin of 0.179; it satisfies the paired
+criterion on two of three seeds, with the paired difference non-positive in 1.9\%, 3.5\%, and 28.7\% of
+replicates, but not on the third, where $\REN$ falls to 0.067. Pythia-1.4B is lower, at $\REN$ 0.105
+and margin 0.067, satisfying the criterion on one seed only (paired difference non-positive in 7.3\%,
+10.7\%, and 0.4\%). The worst-seed rule (Eq.~\ref{eq:verdict}) classifies both as non-carriers; we
+report them as near-misses rather than as unambiguous negatives.
+
+Correction for multiple comparisons reinforces this classification. Across eleven models, a Bonferroni
+threshold is approximately 0.0045; the four carriers, at $p < 0.001$, satisfy it, whereas the
+near-misses do not, including Qwen at its best-seed $p$ of 0.019. Evaluated on its strongest seed
+alone, without the worst-seed requirement, Qwen would satisfy the paired criterion; the worst-seed rule
+and the multiplicity correction exclude it independently. This is the least robust component of the
+single-lineage claim, and we report it as such.
+
+The worst-seed rule originates in a corrected error. An earlier analysis estimated Pythia-1.4B's $\REN$
+near 0.40 and interpreted it as carrying that emerges with scale. The estimate did not survive disjoint
+selection and evaluation pools with leak-free bootstrapping: it fell to 0.105, with per-seed values of
+0.105, 0.094, and 0.220 and a margin that did not hold. We attribute the original value to selection
+and leakage, and the requirement that every seed clear the threshold follows from this correction.
+
+The near-zero $\REN$ outside the GPT-2 lineage might be attributed to near-constant neurons, on which
+any probe would be uninformative. The data are inconsistent with this account. Carrying is, if
+anything, inversely related to activation variance: the two models with the most variable entropy
+neurons, Qwen and Pythia-410M at 50.6 and 15.9, are a fragile near-miss and a non-carrier respectively,
+whereas DistilGPT-2, whose entropy neurons are least variable at 0.46, is among the strongest carriers.
+The probe additionally standardizes its
+inputs, so low variance alone cannot reduce $R^2$ to zero.
+
+Carried variance is likewise not a function of the range of entropy itself. The per-token entropy
+variance of the carriers, 3.43 to 4.09, overlaps the non-carrier range of 2.90 to 3.79, and GPT-Neo, a
+non-carrier, is among the highest at 3.74. The broader out-of-distribution confound remains open
+(Section~\ref{sec:limits}), but this form of it is not supported by the data.
+
+We were unable to determine why the GPT-2 lineage carries entropy; no candidate we examined separates
+the two groups (Figure~\ref{fig:whyfail}). The fraction of the ablation effect carried by the
+tangential, norm-changing channel overlaps between groups---GPT-2-medium and Pythia-410M coincide at
+0.80---so it does not mark the carriers. A geometry probe of null-space alignment is partly circular,
+since the neurons are selected for writing to the null space, and the appropriate control---neurons
+passing the same gate but not selected---diminishes the apparent signal; the alignment is in any case
+no higher for carriers, its largest value belonging to GPT-Neo, a non-carrier. A causal-direction test,
+which injects the neurons' null-space write direction and compares its effect on entropy with that of
+random null directions, is large for only two of the four carriers (GPT-2-large and DistilGPT-2, at 9.3
+and 15.6), negative for the other two (GPT-2 and GPT-2-medium, at $-0.31$ and $-1.58$), and near zero or
+negative across the non-carriers, with a small positive value for Qwen the only exception. We draw no
+general mechanism from these, consistent with the path from the null space through the norm to the
+entropy being generic rather than specific to the carriers.
+\section{Limitations}
+\label{sec:limits}
+
+The principal limitation is the breadth of the carrying set. The four carriers are the GPT-2 family,
+one a distillation of another, and they share an architecture, the WebText corpus, a tokenizer, and
+learned positional encodings; these confounds cannot be separated on pretrained checkpoints, and we
+make no inferential claim about group means. Several axes that might otherwise explain the split are
+already excluded by counterexamples within the set: size, training volume, and the tokenizer are each
+decoupled from carrying, since DistilGPT-2 (120M) carries while OPT-125M and GPT-Neo-163.8M do not,
+GPT-2-large (838M) carries while BLOOM (818M) does not, and Pythia-1.4B, with the most training data
+here, does not carry. What remains confounded along the lineage is the GPT-2 architecture together
+with the WebText data and the evaluation-domain match discussed next.
+
+That evaluation-domain match is the most consequential open confound. Our corpus is Pile text
+\cite{gao2020pile}, in-distribution for Pythia and GPT-Neo and out-of-distribution for GPT-2, so carrying could in part
+reflect out-of-distribution evaluation. BLOOM and Qwen, also out-of-distribution yet non-carriers,
+partially undercut this explanation, but we did not evaluate each model on its own pre-training corpus;
+a per-domain control is the most readily available measurement we did not perform.
+
+The analysis also has researcher degrees of freedom. The thresholds in
+Eqs.~\ref{eq:nullproxy}--\ref{eq:ridge} (the $98$th-percentile null gate, $|\Delta H|>0.02$, norm
+$\ge 0.30$, the $0.90$ activation quantile, $\lambda=1$, four skipped tokens, a context of 256) were
+fixed a priori rather than tuned on the verdict, and we did not sweep them; the verdict is reported
+under a floor-sensitivity check (Appendix~\ref{app:repro}), but a full hyperparameter sweep remains
+future work.
+
+Two intended covariates proved uninformative. Our embedding-tying detector returns ``untied'' for
+every model, including GPT-2, so either the detector is faulty or tying is constant across the set; and
+the per-model vocabulary hash differs within the GPT-2 family under an identical tokenizer, so it does
+not certify tokenizer identity, and the tokenizer conclusion rests instead on vocabulary size and the
+known tokenizer. The question of scale is similarly unresolved: entropy neurons are absent in
+fully-trained Pythia-160M and TinyStories-33M but present in DistilGPT-2 (120M) and in GPT-Neo and OPT
+near $125$--$164$M, so a controlled pretrain at $\sim$125M is likely within the trainable range.
+Without a set of from-scratch--trained models we state controlled pretraining as future work rather
+than asserting it uninformative.
+
+A few smaller caveats remain. The evaluation uses a single domain. Cross-model causal magnitudes are
+not normalized and are therefore not directly comparable. Mean-ablation is inflated by the LayerNorm
+feedback loop and is reported only relatively. The BLOOM result rests on a single neuron, and the
+causal sign may reflect a polarity convention. The correlation control selected on test labels in a
+prior version and is now restricted to the training fold (Appendix~\ref{app:repro}). The $\Rfull$
+point estimate, finally, lies outside its bootstrap interval in 7 of 11 models. This arises from
+bootstrap bias: resampling training documents with replacement reduces the number of unique documents
+and deflates the resampled $R^2$. The effect is larger for the high-dimensional full-residual probe
+than for the low-dimensional entropy-neuron probe, whose point estimates remain inside their
+intervals, so the carrier verdict is unaffected.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+Canonical entropy neurons exert a causal influence on output entropy but, outside a single model
+lineage, do not carry its variation, and the direction of their causal effect is family-dependent. A
+shared mechanistic signature does not establish a shared functional role. The variation of output
+entropy resides in a distributed residual direction that these neurons do not occupy.
+
+Two consequences follow for practice. First, interpretability findings about these neurons do not
+transfer: steering them to control predictive uncertainty should not be expected to work outside the
+GPT-2 lineage, where they do not carry the variation. Second, ``a causal handle is not a carrier'' is
+a general caution---a claim that a neuron implements a function warrants both an intervention test and
+a carrier test, since either alone can mislead.
+
+Three directions follow for analysis. A controlled pretrain (GPT-2 architecture on Pile vs.\ WebText,
+approximately $125$M) would break the lineage-and-domain confound we cannot break on pretrained
+models. A per-domain control (each model on its own corpus and a common out-of-distribution corpus)
+would isolate the evaluation-domain effect. And identifying the distributed direction that does carry
+entropy---and testing whether steering it controls calibration where these neurons do not---would
+convert this negative localization into a constructive one, and connect this analysis back to the
+calibration and hallucination behaviours that motivate the study of entropy neurons.
+
+\section*{Ethics and Broader Impact}
+This is an interpretability study on open-weight language models and public text; it raises no direct
+ethical concerns. Better localization of uncertainty-related components may eventually aid calibration
+and hallucination mitigation; our result is a caution against over-attributing such a role to a single
+neuron class.
+
+\section*{Reproducibility Statement}
+All gates and hyperparameters are in Eqs.~\ref{eq:entropy}--\ref{eq:verdict} and
+Table~\ref{tab:hyper}; seeds, the data hash, and per-model status are recorded with the released
+artifacts. The paired-bootstrap gap and the deprecated marginal-difference column are released
+together for an explicit before-and-after audit.
+
+\section*{Compute}
+All experiments ran on a single Tesla T4 GPU in fp32, $\approx$4.5~hours total, with no distributed
+training.
+
+\section*{Data and Artifact Availability}
+Code, frozen result tables, and run metadata (including the data hash) are released; models and data
+are public (TransformerLens / HuggingFace; \texttt{NeelNanda/pile-10k}).
+
+\appendix
+\section{Synthetic validation}
+\label{app:synthetic}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.64\linewidth]{fig5_synthetic.pdf}
+\caption{Synthetic validation of the sign-invariant attribution measure. Recovered sparsity $k_{50}$
+against the planted sparsity $k_{\mathrm{true}}$ for positive, negative, and mixed contribution signs;
+the three coincide (the measure is sign-invariant) and track the ideal up to the resolution limit.
+Recall of the planted set is $1.0$ throughout.}
+\label{fig:synth}
+\end{figure}
+
+Full protocol and the recall, sparsity-recovery and sign-invariance results summarized in
+Section~\ref{sec:signinv} and Figure~\ref{fig:synth}. The measure validates recall and
+sign-invariance, not precision.
+
+\section{Reproducibility details}
+\label{app:repro}
+The thirteen models span seven families: GPT-2 and DistilGPT-2 \cite{radford2019language}, the Pythia
+suite \cite{biderman2023pythia}, GPT-Neo, OPT \cite{zhang2022opt}, BLOOM \cite{lescao2022bloom}, Qwen2.5
+\cite{qwen2025qwen25}, and TinyStories. Evaluation uses Pile text \cite{gao2020pile}. The selection and
+probing methodology follows the sparse-probing and entropy-neuron literature
+\cite{gurnee2023finding,stolfo2024confidence}.
+Table~\ref{tab:hyper} lists the full configuration and environment; Tables~\ref{tab:variance}--\ref{tab:overlap}
+give the activation- and entropy-variance descriptors, the deprecated-versus-corrected gap, and the
+criterion-overlap summary referenced in the main text.
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{ll}
+\toprule
+Setting & Value \\
+\midrule
+Eval documents per model & 60 \\
+Selection/eval pools & disjoint halves of 140 Pile documents \\
+Max tokens / skipped tokens & 256 / 4 \\
+High-activation quantile & 0.90 \\
+Null-space percentile gate & 98 \\
+$|\Delta H|$, norm, flip gates & $>0.02$ nats, $\ge 0.30$, $<0.01$ \\
+Max entropy neurons & 6 \\
+Ridge $\lambda$ & 1.0 \\
+Train fraction & 0.70 \\
+Bootstrap replicates & 1000 \\
+Causal documents / direction-test documents & $\le$12 / 8 \\
+Seeds & \{0, 1, 2\} \\
+Precision / GPU & fp32 / Tesla T4 \\
+Data hash & \texttt{da5f6242b06fa229} \\
+Library versions & torch 2.7.1, transformer\_lens 3.4.0, transformers 5.10.2, \\
+ & datasets 4.8.5, pandas 2.3.3 \\
+\bottomrule
+\end{tabular}
+\caption{Hyperparameters and environment for full reproduction. Verdicts are additionally reported
+under floor-sensitivity at $\REN$ thresholds $\{0.05, 0.10, 0.15\}$; the four carriers survive all
+three.}
+\label{tab:hyper}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+Model & EN act.\ variance & entropy variance \\
+\midrule
+GPT-2 & 8.64 & 4.09 \\
+GPT-2-medium & 2.14 & 3.99 \\
+GPT-2-large & 0.30 & 3.43 \\
+DistilGPT-2 & 0.46 & 3.91 \\
+Pythia-410M & 15.87 & 3.17 \\
+Pythia-1B & 0.78 & 3.01 \\
+Pythia-1.4B & 1.32 & 2.90 \\
+GPT-Neo-125M & 1.30 & 3.74 \\
+BLOOM-560M & 1.45 & 3.53 \\
+Qwen2.5-0.5B & 50.59 & 3.10 \\
+OPT-125M & 0.00 & 3.79 \\
+\bottomrule
+\end{tabular}
+\caption{Activation- and entropy-variance descriptors (Section~\ref{sec:negative}). Carrying is, if
+anything, inversely related to entropy-neuron activation variance: the two models with the largest
+variance (Qwen, a fragile near-miss, and Pythia-410M, a non-carrier) do not robustly carry, while
+DistilGPT-2, with small variance, is among the strongest carriers. Carrier entropy variance
+(3.43--4.09) overlaps the non-carrier range (2.90--3.79).}
+\label{tab:variance}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+Model & deprecated $\mathrm{gap}_{\mathrm{lo}}$ & paired $\mathrm{gap}_{\mathrm{lo}}$ \\
+\midrule
+GPT-2 & 0.157 & 0.197 \\
+GPT-2-medium & 0.141 & 0.191 \\
+GPT-2-large & 0.074 & 0.116 \\
+DistilGPT-2 & 0.222 & 0.279 \\
+Pythia-410M & $-$0.167 & $-$0.132 \\
+Pythia-1B & $-$0.085 & $-$0.066 \\
+Pythia-1.4B & $-$0.079 & $-$0.037 \\
+GPT-Neo-125M & $-$0.175 & $-$0.157 \\
+BLOOM-560M & $-$0.054 & $-$0.046 \\
+Qwen2.5-0.5B & $-$0.077 & 0.010 \\
+OPT-125M & $-$0.111 & $-$0.100 \\
+\bottomrule
+\end{tabular}
+\caption{The deprecated marginal-difference gap versus the corrected paired-bootstrap gap
+(Eq.~\ref{eq:gap}). The correction widens every margin because it removes the spurious inflation from
+treating two positively correlated quantities as independent; the four carrier verdicts are unchanged,
+and Qwen moves from a negative deprecated bound to a small positive paired bound, consistent with its
+near-miss status.}
+\label{tab:gapfix}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lc}
+\toprule
+Model & top-5 overlap \\
+\midrule
+GPT-2-large & 1 \\
+DistilGPT-2 & 1 \\
+all other nine models & 0 \\
+\bottomrule
+\end{tabular}
+\caption{Overlap between the top-five entropy-neuron sets selected by the null-space and
+correlation-with-entropy criteria (out of five). The two criteria share at most one neuron in any
+model (indices 4537 in GPT-2-large, 1611 in DistilGPT-2) and none in the other nine, so they identify
+different units (Section~\ref{sec:criterion}). The full top-five index lists are released with the
+artifacts.}
+\label{tab:overlap}
+\end{table}
+
+\section{The ``why GPT-2'' battery}
+\label{app:battery}
+The geometry probe (with the passed-null-gate control), the scale-invariant ablation-channel measure,
+and the causal-direction injection test, all reported descriptively
+(Figure~\ref{fig:sign} and Section~\ref{sec:negative}), with the circularity, the instability of the
+causal-direction statistic, and the broken tying and vocabulary-hash covariates disclosed.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.74\linewidth]{fig6_sign_asymmetry.pdf}
+\caption{Family-dependent sign of the causal effect. $\Delta H$ under entropy-neuron ablation per
+model, with document-level intervals; ablation lowers entropy in the GPT-2 lineage, BLOOM and Qwen,
+and raises it elsewhere. Reported descriptively: the sign does not track carrying. Wide intervals for
+Pythia and OPT reflect the small causal-document count ($\le$12).}
+\label{fig:sign}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.78\linewidth]{fig7_seed_stability.pdf}
+\caption{Per-seed $\REN$ under the three selection seeds, in canonical model order. Carrier estimates
+are high and tightly clustered; the two near-misses are dispersed, with Qwen collapsing to $0.067$ on
+its worst seed, which is what the worst-seed rule (Eq.~\ref{eq:verdict}) acts on. Non-carriers remain
+near zero. EN: entropy neurons.}
+\label{fig:seedstab}
+\end{figure}
+
+\clearpage
+\bibliographystyle{plain}
+\bibliography{refs}
+\end{document}

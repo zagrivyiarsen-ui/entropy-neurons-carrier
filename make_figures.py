@@ -1,0 +1,12 @@
+causal_effect_EN_null,causal_effect_nullctrl_mean,causal_effect_nullctrl_sd,causal_z,model,grp,nEN
+0.1143,0.1348,0.0668,-0.31,gpt2,carry,6
+0.0984,0.1542,0.0353,-1.58,gpt2-medium,carry,6
+0.9035,0.1276,0.0837,9.27,gpt2-large,carry,5
+0.4322,0.099,0.0213,15.63,distilgpt2,carry,6
+0.1867,0.319,0.1468,-0.9,pythia-410m,no,6
+0.2017,0.5349,0.1722,-1.93,pythia-1b,no,6
+0.431,0.7135,0.2316,-1.22,pythia-1.4b,no,6
+0.166,0.191,0.0337,-0.74,EleutherAI/gpt-neo-125M,no,4
+0.3343,1.4889,0.6383,-1.81,bigscience/bloom-560m,no,1
+0.0633,0.0466,0.0205,0.82,Qwen/Qwen2.5-0.5B,no,5
+0.2829,0.2885,0.1856,-0.03,facebook/opt-125m,no,4

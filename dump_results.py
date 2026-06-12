@@ -1,0 +1,12 @@
+d_model,vocab,tie_emb,n_passed_null,control,align,align_z,PR,PR_z,energy_bottom8,energy_bottom8_z,model,grp,nEN
+768,50257,False,62,passed-null-gate,0.0174,-0.22,5.13,-1.92,0.6857,3.47,gpt2,carry,6
+1024,50257,False,82,passed-null-gate,0.249,1.68,2.71,-1.87,0.8627,3.45,gpt2-medium,carry,6
+1280,50257,False,103,passed-null-gate,0.3617,3.29,4.47,-1.12,0.6576,6.83,gpt2-large,carry,5
+768,50257,False,62,passed-null-gate,0.0171,0.1,3.96,-1.35,0.5715,3.71,distilgpt2,carry,6
+1024,50304,False,82,passed-null-gate,0.124,-0.98,2.67,-1.87,0.789,2.99,pythia-410m,no,6
+2048,50304,False,164,passed-null-gate,0.0458,0.12,3.39,-1.65,0.7003,4.03,pythia-1b,no,6
+2048,50304,False,164,passed-null-gate,0.7572,3.07,2.91,-1.36,0.7084,3.76,pythia-1.4b,no,6
+768,50257,False,62,passed-null-gate,0.3175,6.71,47.11,-4.13,0.2339,8.12,EleutherAI/gpt-neo-125M,no,4
+1024,250880,False,82,passed-null-gate,0.7771,4.75,2.44,-1.29,0.9211,5.27,bigscience/bloom-560m,no,1
+896,151936,False,98,passed-null-gate,0.177,2.14,2.48,-2.02,0.7746,7.6,Qwen/Qwen2.5-0.5B,no,5
+768,50272,False,62,passed-null-gate,0.0328,-0.92,6.66,-1.49,0.4327,1.31,facebook/opt-125m,no,4

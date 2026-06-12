@@ -1,0 +1,12 @@
+tang_frac,tang_frac_lo,tang_frac_hi,model,grp,nEN
+0.6223,0.6146,0.6306,gpt2,carry,6
+0.8033,0.7944,0.8105,gpt2-medium,carry,6
+0.7717,0.7679,0.7762,gpt2-large,carry,5
+0.526,0.5208,0.5322,distilgpt2,carry,6
+0.8017,0.7801,0.8215,pythia-410m,no,6
+0.9975,0.9972,0.9979,pythia-1b,no,6
+0.9679,0.9651,0.97,pythia-1.4b,no,6
+0.9171,0.9044,0.9296,EleutherAI/gpt-neo-125M,no,4
+0.8947,0.8659,0.9227,bigscience/bloom-560m,no,1
+0.9351,0.9305,0.939,Qwen/Qwen2.5-0.5B,no,5
+0.9297,0.8949,0.9597,facebook/opt-125m,no,4

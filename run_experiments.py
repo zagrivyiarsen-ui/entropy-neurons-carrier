@@ -1,0 +1,12 @@
+vocab_size,vocab_hash,model,grp
+50257,b6f5a4087119,gpt2,carry
+50257,752829d185fc,gpt2-medium,carry
+50257,9c90361548ce,gpt2-large,carry
+50257,a26930998fa0,distilgpt2,carry
+50277,89c02a60d9a9,pythia-410m,no
+50277,654739a78705,pythia-1b,no
+50277,4279c3248b52,pythia-1.4b,no
+50257,d0e692f86e53,EleutherAI/gpt-neo-125M,no
+250680,8c392cc58a19,bigscience/bloom-560m,no
+151665,cb0bd29d0d64,Qwen/Qwen2.5-0.5B,no
+50265,3846ef909f93,facebook/opt-125m,no

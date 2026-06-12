@@ -1,0 +1,118 @@
+"""Guard the frozen headline result: assert table2_dissociation.csv matches the published claim.
+
+Exits non-zero (and prints every failing check) if any invariant is violated. Run in CI after a
+fresh experiment run, or against the committed CSV, to catch silent drift in selection, thresholds,
+or the paired-gap verdict.
+
+Checks
+  1. 13 models total.
+  2. 11 models with nEN > 0.
+  3. exactly 4 carriers, and they are exactly {gpt2, gpt2-medium, gpt2-large, distilgpt2}.
+  4. each carrier R2_EN within 1e-3 of the published value.
+  5. every nEN>0 model has R2_full in [0.5, 0.8].
+  6. Qwen/Qwen2.5-0.5B is NOT a carrier under the seed-min verdict.
+
+A "carrier" is a row whose verdict column == "carry". The verdict column is verdict_NEW_seedmin
+if present, otherwise verdict_seedmin (both are the seed-min paired-gap verdict).
+
+Usage
+  python scripts/verify_frozen.py [path/to/table2_dissociation.csv]
+  (default path: results/table2_dissociation.csv)
+"""
+import sys
+import os
+import pandas as pd
+
+CSV = sys.argv[1] if len(sys.argv) > 1 else os.path.join("results", "table2_dissociation.csv")
+
+EXPECTED_N_MODELS = 13
+EXPECTED_N_EN = 11
+EXPECTED_CARRIERS = {"gpt2", "gpt2-medium", "gpt2-large", "distilgpt2"}
+CARRIER_R2_EN = {"gpt2": 0.3754, "gpt2-medium": 0.3952, "gpt2-large": 0.2061, "distilgpt2": 0.4014}
+R2_EN_TOL = 1e-3
+R2_FULL_RANGE = (0.5, 0.8)
+NON_CARRIER_SEEDMIN = "Qwen/Qwen2.5-0.5B"
+
+failures = []
+
+
+def check(cond, msg):
+    if not cond:
+        failures.append(msg)
+
+
+if not os.path.exists(CSV):
+    print(f"FAIL: results file not found: {CSV}")
+    sys.exit(2)
+
+df = pd.read_csv(CSV)
+
+# pick the seed-min verdict column (accept either schema name)
+verdict_col = None
+for c in ("verdict_NEW_seedmin", "verdict_seedmin"):
+    if c in df.columns:
+        verdict_col = c
+        break
+if verdict_col is None:
+    print(f"FAIL: no seed-min verdict column found (looked for verdict_NEW_seedmin, verdict_seedmin); "
+          f"columns present: {list(df.columns)}")
+    sys.exit(2)
+
+# 1. total models
+check(len(df) == EXPECTED_N_MODELS,
+      f"expected {EXPECTED_N_MODELS} models, found {len(df)}")
+
+# 2. models with EN
+if "nEN" in df.columns:
+    n_en = int((pd.to_numeric(df["nEN"], errors="coerce").fillna(0) > 0).sum())
+    check(n_en == EXPECTED_N_EN, f"expected {EXPECTED_N_EN} models with nEN>0, found {n_en}")
+else:
+    failures.append("column nEN missing")
+
+# 3. carriers
+carriers = set(df.loc[df[verdict_col].astype(str) == "carry", "model"].tolist())
+check(len(carriers) == len(EXPECTED_CARRIERS),
+      f"expected {len(EXPECTED_CARRIERS)} carriers, found {len(carriers)}: {sorted(carriers)}")
+check(carriers == EXPECTED_CARRIERS,
+      f"carrier set mismatch: expected {sorted(EXPECTED_CARRIERS)}, found {sorted(carriers)}")
+
+# 4. carrier R2_EN values
+if "R2_EN" in df.columns:
+    by_model = df.set_index("model")
+    for name, want in CARRIER_R2_EN.items():
+        if name not in by_model.index:
+            failures.append(f"carrier {name} missing from table")
+            continue
+        got = pd.to_numeric(pd.Series([by_model.loc[name, "R2_EN"]]), errors="coerce").iloc[0]
+        check(got == got and abs(float(got) - want) <= R2_EN_TOL,
+              f"{name} R2_EN={got} not within {R2_EN_TOL} of {want}")
+else:
+    failures.append("column R2_EN missing")
+
+# 5. R2_full range for every nEN>0 model
+if "R2_full" in df.columns and "nEN" in df.columns:
+    en_rows = df[pd.to_numeric(df["nEN"], errors="coerce").fillna(0) > 0]
+    lo, hi = R2_FULL_RANGE
+    for _, r in en_rows.iterrows():
+        v = pd.to_numeric(pd.Series([r["R2_full"]]), errors="coerce").iloc[0]
+        check(v == v and lo <= float(v) <= hi,
+              f"{r['model']} R2_full={r['R2_full']} outside [{lo}, {hi}]")
+else:
+    failures.append("columns R2_full / nEN missing")
+
+# 6. Qwen not a carrier under seed-min
+if NON_CARRIER_SEEDMIN in set(df["model"]):
+    qv = df.loc[df["model"] == NON_CARRIER_SEEDMIN, verdict_col].astype(str).iloc[0]
+    check(qv != "carry", f"{NON_CARRIER_SEEDMIN} is a carrier under {verdict_col} (={qv}); expected non-carrier")
+else:
+    failures.append(f"{NON_CARRIER_SEEDMIN} missing from table")
+
+if failures:
+    print(f"FROZEN CHECK FAILED ({len(failures)} issue(s)) on {CSV} [verdict col: {verdict_col}]:")
+    for f in failures:
+        print("  -", f)
+    sys.exit(1)
+
+print(f"FROZEN CHECK PASSED on {CSV} [verdict col: {verdict_col}]: "
+      f"{EXPECTED_N_MODELS} models, {EXPECTED_N_EN} with EN, carriers {sorted(EXPECTED_CARRIERS)}.")
+sys.exit(0)

@@ -1,0 +1,12 @@
+# src/run_experiments.py
+
+The single experiment entry point: entropy-neuron selection, the dissociation probe
+(paired-bootstrap gap), causal ablation, the mechanism decomposition, and the geometry/channel/
+causal-direction battery — all in one process on one GPU (fp32).
+
+    python src/run_experiments.py --out results --out-why results_why
+    python src/run_experiments.py --include-2-8b      # optional larger Pythia checkpoint
+
+Writes the 12 artifacts under `results/` and `results_why/` documented in the top-level README.
+Runtime ~4.5–5.5 h on a Tesla T4. The dependency install is intentionally unpinned; see
+`requirements.txt` for the rationale and the observed versions.

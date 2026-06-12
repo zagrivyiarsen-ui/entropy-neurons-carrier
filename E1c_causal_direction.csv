@@ -1,0 +1,8 @@
+# Result files — real Kaggle run
+
+These CSVs are the authentic output of `src/run_experiments.py` on a single Tesla T4 (fp32),
+runtime 250.8 min, `data_hash = da5f6242b06fa229`, full 35-column schema. They are the files the
+paper's tables and figures are built from. `scripts/verify_frozen.py` passes on them.
+
+Headline: 13 models, 11 with entropy neurons; 4 carriers (GPT-2 lineage); Qwen is a near-miss
+(verdict_NEW=carry but verdict_NEW_seedmin=no); everything else non-carrier or no-EN.

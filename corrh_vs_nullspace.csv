@@ -1,0 +1,125 @@
+% Verified bibliography for "Causal but Not Carrier". All entries checked against
+% arXiv / NeurIPS proceedings / Nature / TMLR (June 2026).
+
+@inproceedings{stolfo2024confidence,
+  title     = {Confidence Regulation Neurons in Language Models},
+  author    = {Stolfo, Alessandro and Wu, Ben and Gurnee, Wes and Belinkov, Yonatan
+               and Song, Xingyi and Sachan, Mrinmaya and Nanda, Neel},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume    = {37},
+  year      = {2024},
+  note      = {arXiv:2406.16254}
+}
+
+@article{gurnee2024universal,
+  title   = {Universal Neurons in {GPT2} Language Models},
+  author  = {Gurnee, Wes and Horsley, Theo and Guo, Zifan Carl and Kheirkhah, Tara Rezaei
+             and Sun, Qinyi and Hathaway, Will and Nanda, Neel and Bertsimas, Dimitris},
+  journal = {Transactions on Machine Learning Research},
+  year    = {2024},
+  note    = {arXiv:2401.12181}
+}
+
+@article{farquhar2024detecting,
+  title   = {Detecting Hallucinations in Large Language Models Using Semantic Entropy},
+  author  = {Farquhar, Sebastian and Kossen, Jannik and Kuhn, Lorenz and Gal, Yarin},
+  journal = {Nature},
+  volume  = {630},
+  number  = {8017},
+  pages   = {625--630},
+  year    = {2024},
+  doi     = {10.1038/s41586-024-07421-0}
+}
+
+@inproceedings{kuhn2023semantic,
+  title     = {Semantic Uncertainty: Linguistic Invariances for Uncertainty Estimation
+               in Natural Language Generation},
+  author    = {Kuhn, Lorenz and Gal, Yarin and Farquhar, Sebastian},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2023},
+  note      = {arXiv:2302.09664}
+}
+
+@article{kossen2024semantic,
+  title   = {Semantic Entropy Probes: Robust and Cheap Hallucination Detection in {LLMs}},
+  author  = {Kossen, Jannik and Han, Jiatong and Razzak, Muhammed and Schut, Lisa
+             and Malik, Shreshth and Gal, Yarin},
+  journal = {arXiv preprint arXiv:2406.15927},
+  year    = {2024}
+}
+
+@article{radford2019language,
+  title   = {Language Models are Unsupervised Multitask Learners},
+  author  = {Radford, Alec and Wu, Jeff and Child, Rewon and Luan, David
+             and Amodei, Dario and Sutskever, Ilya},
+  journal = {OpenAI technical report},
+  year    = {2019}
+}
+
+@inproceedings{biderman2023pythia,
+  title     = {Pythia: A Suite for Analyzing Large Language Models Across Training and Scaling},
+  author    = {Biderman, Stella and Schoelkopf, Hailey and Anthony, Quentin and Bradley, Herbie
+               and O'Brien, Kyle and Hallahan, Eric and Khan, Mohammad Aflah and Purohit, Shivanshu
+               and Prashanth, USVSN Sai and Raff, Edward and Skowron, Aviya and Sutawika, Lintang
+               and van der Wal, Oskar},
+  booktitle = {International Conference on Machine Learning (ICML)},
+  pages     = {2397--2430},
+  year      = {2023}
+}
+
+@article{zhang2022opt,
+  title   = {{OPT}: Open Pre-trained Transformer Language Models},
+  author  = {Zhang, Susan and Roller, Stephen and Goyal, Naman and Artetxe, Mikel and Chen, Moya
+             and Chen, Shuohui and Dewan, Christopher and Diab, Mona and Li, Xian and Lin, Xi Victoria
+             and Mihaylov, Todor and Ott, Myle and Shleifer, Sam and Shuster, Kurt and Simig, Daniel
+             and Koura, Punit Singh and Sridhar, Anjali and Wang, Tianlu and Zettlemoyer, Luke},
+  journal = {arXiv preprint arXiv:2205.01068},
+  year    = {2022}
+}
+
+@article{lescao2022bloom,
+  title   = {{BLOOM}: A 176{B}-Parameter Open-Access Multilingual Language Model},
+  author  = {{BigScience Workshop}},
+  journal = {arXiv preprint arXiv:2211.05100},
+  year    = {2022}
+}
+
+@article{qwen2025qwen25,
+  title   = {Qwen2.5 Technical Report},
+  author  = {{Qwen Team}},
+  journal = {arXiv preprint arXiv:2412.15115},
+  year    = {2024}
+}
+
+@article{gao2020pile,
+  title   = {The {Pile}: An 800{GB} Dataset of Diverse Text for Language Modeling},
+  author  = {Gao, Leo and Biderman, Stella and Black, Sid and Golding, Laurence and Hoppe, Travis
+             and Foster, Charles and Phang, Jason and He, Horace and Thite, Anish and Nabeshima, Noa
+             and Presser, Shawn and Leahy, Connor},
+  journal = {arXiv preprint arXiv:2101.00027},
+  year    = {2020}
+}
+
+@misc{nostalgebraist2020logitlens,
+  title  = {Interpreting {GPT}: The Logit Lens},
+  author = {nostalgebraist},
+  year   = {2020},
+  howpublished = {LessWrong},
+  note   = {\url{https://www.lesswrong.com/posts/AcKRB8wDpdaN6v6ru/interpreting-gpt-the-logit-lens}}
+}
+
+@article{belrose2023tuned,
+  title   = {Eliciting Latent Predictions from Transformers with the Tuned Lens},
+  author  = {Belrose, Nora and Furman, Zach and Smith, Logan and Halawi, Danny and Ostrovsky, Igor
+             and McKinney, Lev and Biderman, Stella and Steinhardt, Jacob},
+  journal = {arXiv preprint arXiv:2303.08112},
+  year    = {2023}
+}
+
+@article{gurnee2023finding,
+  title   = {Finding Neurons in a Haystack: Case Studies with Sparse Probing},
+  author  = {Gurnee, Wes and Nanda, Neel and Pauly, Matthew and Harvey, Katherine
+             and Troitskii, Dmitrii and Bertsimas, Dimitris},
+  journal = {Transactions on Machine Learning Research},
+  year    = {2023}
+}
