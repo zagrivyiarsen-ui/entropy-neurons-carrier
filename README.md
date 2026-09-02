@@ -51,4 +51,4 @@ Models and data are public (TransformerLens / HuggingFace,
 `NeelNanda/pile-10k`). Single Tesla T4, ≈25 GPU-hours. Hyperparameters and
 environment are in Table 3 of the paper.
 
-Arsenii Zahrivyi — zahrivyi@uni-wuppertal.de, University of Wuppertal
+Arsenii Zahrivyi — arsenii.zahrivyi@uni-wuppertal.de, University of Wuppertal
